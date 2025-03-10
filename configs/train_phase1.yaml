@@ -1,0 +1,19 @@
+
+mode:
+  - train
+training_params:
+  T: 3
+  alpha: 0.1
+  number_episodes: 10000
+
+env:
+  agents_num: 1
+  waypoints_num: 1
+  obstacles_num: 0
+  update_waypoint: True
+active_modules:
+  TGT:
+    discount: 0.9
+    thresh: 1.5
+    w: 1
+
