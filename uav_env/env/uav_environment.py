@@ -115,7 +115,8 @@ class UAVEnvironment(ParallelEnv):
         self.current_waypoint_idx = 0
         self.agents = list(copy(self.possible_agents))
         self.agents_positions = np.array([self.start + Point(agent%self.row_size,agent//self.row_size) for agent in self.possible_agents])
-        self.agents_angles = np.array([np.random.randint(0,360) for _ in self.possible_agents])
+        # self.agents_angles = np.array([np.random.randint(0,360) for _ in self.possible_agents])
+        self.agents_angles = np.array([0 for _ in self.possible_agents])
         
         # obstacles and waypoints initialization
         self.waypoints_positions = self.generate_waypoints()
@@ -127,10 +128,13 @@ class UAVEnvironment(ParallelEnv):
             for mod in self.modules:
                 observations[agent_idx][mod] = self.modules[mod].get_observations(self,agent_idx)
         # Get dummy infos. Necessary for proper parallel_to_aec conversion
-        infos = {a: {} for a in self.agents}
-
+        infos = {agent:{"action_mask":self.get_actions_masks(agent)} for agent in self.agents}
         return observations, infos
-    
+    def get_actions_masks(self,agent_idx):
+        masks = np.array([
+             self.validate_pos(agent_idx,self.update_state(agent_idx,i)[0])[0]
+              for i,_ in enumerate(self.actions)])
+        return masks
     # def get_observations(self,agent_idx):
     #     observations = {
     #         i:{"TGT":(None,None)}
@@ -144,29 +148,17 @@ class UAVEnvironment(ParallelEnv):
     #         observations[i]['TGT'] = (waypoint_dist,waypoint_angle_diff)
     #     return observations
     # @profile
-    def update_position(self,old_pos,angle):
-        movement = Point(0,0)
-        # 45 degrees for each part
-        if (angle >= 337.5 or angle < 22.5):  # right
-            movement = Point(1, 0)
-        elif (angle >= 22.5 and angle < 67.5):  # right-top
-            movement = Point(1, 1)
-        elif (angle >= 67.5 and angle < 112.5):  # top
-            movement = Point(0, 1)
-        elif (angle >= 112.5 and angle < 157.5):  # left-top
-            movement = Point(-1, 1)
-        elif (angle >= 157.5 and angle < 202.5):  # left
-            movement = Point(-1, 0)
-        elif (angle >= 202.5 and angle < 247.5):  # left-bot
-            movement = Point(-1, -1)
-        elif (angle >= 247.5 and angle < 292.5):  # bot
-            movement = Point(0, -1)
-        elif (angle >= 292.5 and angle < 337.5):  # right-bot
-            movement = Point(1, -1)
-        movement.x = movement.x * 0.5
-        movement.y = movement.y * 0.5
+    def update_state(self,agent_idx,action):
+        old_pos = self.agents_positions[agent_idx]
+        new_angle = self.agents_angles[agent_idx]+self.actions[action]
+        # self.agents_angles[agent_idx] = self.agents_angles[agent_idx]+self.actions[action]
+        if new_angle > 360:
+            new_angle = new_angle % 360
+        elif new_angle < 0:
+            new_angle = new_angle + 360
+        movement = Point(0.5*np.cos(new_angle),0.5*np.sin(new_angle))
         new_pos = old_pos + movement
-        return new_pos
+        return new_pos,new_angle
     # Checks
     # @profile
     def check_boundries(self,agent_new_pos:Point):
@@ -217,25 +209,19 @@ class UAVEnvironment(ParallelEnv):
         And any internal state used by observe() or render()
         """
         
-        
-        infos = {a: {} for a in self.agents}
+                
         # Execute actions
         # update angle
-        new_angle = self.agents_angles[agent_idx]+self.actions[action]
-        # self.agents_angles[agent_idx] = self.agents_angles[agent_idx]+self.actions[action]
-        if new_angle > 360:
-            new_angle = new_angle % 360
-        elif new_angle < 0:
-            new_angle = new_angle + 360
+        
         # update position
-        new_pos = self.update_position(self.agents_positions[agent_idx],new_angle)
+        new_pos,new_angle = self.update_state(agent_idx,action)
         pos_valid, hits = self.validate_pos(agent_idx,new_pos)
         
         if pos_valid:
             self.agents_positions[agent_idx] = new_pos
             self.agents_angles[agent_idx] = new_angle
         else:
-            return None, None, None, None, None
+            raise Exception("Invalid action!")
 
         rewards = self.calc_reward(agent_idx)
         # Update way point and check termination conditions
@@ -259,6 +245,10 @@ class UAVEnvironment(ParallelEnv):
         if self.timestep > 100000*self.agents_num:
             truncation = True
         self.timestep += 1
+
+
+        masks = self.get_actions_masks(agent_idx)
+        infos = {"action_mask":masks}
         return observations, rewards, termination, truncation, infos
 
     def render(self):
