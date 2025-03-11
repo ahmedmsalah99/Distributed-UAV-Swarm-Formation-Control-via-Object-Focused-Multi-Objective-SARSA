@@ -37,6 +37,8 @@ class UAVEnvironment(ParallelEnv):
         self.actions = [-60,-45,-30,-15,-8,0,8,15,30,45,60]
         # other objects positions
         self.start = Point(0,0)
+        if self.waypoints_num == 1:
+            self.start = Point(0,self.size.y-1)
 
         # initializations
         self.timestep = None
@@ -69,29 +71,32 @@ class UAVEnvironment(ParallelEnv):
         return obstacles
     
     def generate_waypoints(self):
-
-        
         waypoints = np.array([])
         half_grid = self.size.x // 2
-        step = self.size.y //self.waypoints_num
-
+        step = self.size.y //(self.waypoints_num+1)
         start_x = np.max([point.x for point in self.agents_positions])
         start_y = np.max([point.y for point in self.agents_positions])
 
+        
         for i in range(self.waypoints_num):
-            # Alternate between right and left halves of the grid
-            if i % 2 == 0:
-                # Right half
-                x = random.randint(half_grid, self.size.x - 1)
+            if self.waypoints_num == 1:
+                x = random.randint(0, self.size.x - 1)
             else:
-                # Left half
-                x = random.randint(start_x, half_grid - 1)
+                # Alternate between right and left halves of the grid
+                if i % 2 == 0:
+                    # Right half
+                    x = random.randint(half_grid, self.size.x - 1)
+                else:
+                    # Left half
+                    x = random.randint(start_x, half_grid - 1)
             # in vertical order
-            y = random.randint(max(start_y,step*i), step*(i+1)-1)
+            # y = random.randint(max(step,(step)*(i+2)), step*(i+1)-1)
+            y = random.randint(step*(i), step*(i+1)-1)
             candidate = Point(x,y)
             # not in obstacle position
             while candidate in self.obstacles_positions:
-                y = random.randint(max(start_y,step*i), step*(i+1)-1)
+                y = random.randint(step*(i), step*(i+1)-1)
+                # y = random.randint(max(step,step*(i+2)), step*(i+1)-1)
                 candidate = Point(x, y)
             
             waypoints = np.append(waypoints,candidate)
@@ -114,7 +119,8 @@ class UAVEnvironment(ParallelEnv):
         self.timestep = 0
         self.current_waypoint_idx = 0
         self.agents = list(copy(self.possible_agents))
-        self.agents_positions = np.array([self.start + Point(agent%self.row_size,agent//self.row_size) for agent in self.possible_agents])
+        random_x = np.random.randint(0,self.size.x-1)
+        self.agents_positions = np.array([self.start + Point(agent%self.row_size+random_x,agent//self.row_size) for agent in self.possible_agents])
         # self.agents_angles = np.array([np.random.randint(0,360) for _ in self.possible_agents])
         self.agents_angles = np.array([0 for _ in self.possible_agents])
         
@@ -150,13 +156,14 @@ class UAVEnvironment(ParallelEnv):
     # @profile
     def update_state(self,agent_idx,action):
         old_pos = self.agents_positions[agent_idx]
-        new_angle = self.agents_angles[agent_idx]+self.actions[action]
-        # self.agents_angles[agent_idx] = self.agents_angles[agent_idx]+self.actions[action]
-        if new_angle > 360:
-            new_angle = new_angle % 360
-        elif new_angle < 0:
-            new_angle = new_angle + 360
-        movement = Point(0.5*np.cos(new_angle),0.5*np.sin(new_angle))
+        new_angle = (self.agents_angles[agent_idx]+self.actions[action] - 90)*(np.pi/180)
+        # new_angle = (self.actions[action] - 90)*(np.pi/180)
+        # angle_sign = np.sign(new_angle)
+        # if new_angle >= 360:
+        #     new_angle = new_angle % 360
+        # elif new_angle < 0:
+        #     new_angle = new_angle + 360
+        movement = Point(0.25*np.cos(new_angle),0.25*np.sin(new_angle))
         new_pos = old_pos + movement
         return new_pos,new_angle
     # Checks
@@ -212,7 +219,7 @@ class UAVEnvironment(ParallelEnv):
                 
         # Execute actions
         # update angle
-        
+        termination = False
         # update position
         new_pos,new_angle = self.update_state(agent_idx,action)
         pos_valid, hits = self.validate_pos(agent_idx,new_pos)
@@ -221,17 +228,17 @@ class UAVEnvironment(ParallelEnv):
             self.agents_positions[agent_idx] = new_pos
             self.agents_angles[agent_idx] = new_angle
         else:
-            raise Exception("Invalid action!")
+            termination = True
 
         rewards = self.calc_reward(agent_idx)
         # Update way point and check termination conditions
-        termination = False
+        
         way_point_dist = self.agents_positions[agent_idx].dist(self.waypoints_positions[self.current_waypoint_idx])
         in_range = way_point_dist < self.waypoint_dist_thesh
         
         if in_range and self.update_waypoint:
             if self.current_waypoint_idx == self.waypoints_num - 1:
-                termination = in_range
+                termination |= in_range
             else:
                 self.current_waypoint_idx += 1
 
@@ -248,6 +255,12 @@ class UAVEnvironment(ParallelEnv):
 
 
         masks = self.get_actions_masks(agent_idx)
+        if np.all(masks == False):
+            # for mod in rewards:
+            #     for obj in rewards[mod]:
+            #         rewards[mod][obj] -= 
+             
+            termination = True
         infos = {"action_mask":masks}
         return observations, rewards, termination, truncation, infos
 
@@ -319,7 +332,8 @@ class UAVEnvironment(ParallelEnv):
     def observation_space(self):
         temp_dict = {}
         if "TGT" in self.modules:
-            temp_dict["TGT"] = MultiDiscrete([self.max_dist,360/8])
+            # temp_dict["TGT"] = MultiDiscrete([self.max_dist,(360)*(2/5)])
+            temp_dict["TGT"] = MultiDiscrete([self.max_dist,360/5])
         if "COH" in self.modules:
             temp_dict["COH"] = MultiDiscrete([self.max_dist*4,360*2-1])
         if "OBS" in self.modules:

@@ -97,8 +97,12 @@ class TargetSeekModule(ObservationModule):
 
         distance = np.min((np.linalg.norm(rel_pos.to_array()),env.max_dist-1))
         # distance = self.get_refined_dist(distance,env.max_dist)
-        bearing = np.arctan2(rel_pos.y, rel_pos.x) * 180 / np.pi 
-        return {0: [int(np.floor(distance)), (int(np.floor(bearing + 180))//8)-1]}
+        bearing = (np.min((np.arctan2(rel_pos.y, rel_pos.x) * 180 / np.pi,180-1))+180)/5
+        # heading = env.agents_angles[agent_idx]
+        # diff = ((bearing - heading)+360)/5
+        # if diff < 0:
+        #     raise Exception("diff has to be positive")
+        return {0: [int(distance), (int(bearing))]}
     
     def calc_reward(self, way_point_dist):
         rewards = {}

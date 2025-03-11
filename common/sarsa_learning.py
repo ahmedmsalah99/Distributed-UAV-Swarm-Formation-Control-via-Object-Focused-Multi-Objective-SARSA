@@ -27,7 +27,7 @@ class SARSALearning:
         
         self.Qmatrix = {}
         for mod in self.state_space:
-            if mod in Qmatrix_path_dict:
+            if Qmatrix_path_dict is not None and mod in Qmatrix_path_dict:
                 loaded_Qmatrix = np.load(Qmatrix_path_dict[mod],allow_pickle=True).item()
                 print(loaded_Qmatrix)
                 self.Qmatrix[mod] = loaded_Qmatrix[mod]
@@ -43,9 +43,11 @@ class SARSALearning:
     # state - state for which to compute the action
     # index - index of the current episode
     def select_action(self,state,index,action_mask):
-       
+        
         Q_GM = self.calc_Q_GM(state)
         Q_GM = Q_GM[action_mask]
+
+        
         exp_term = np.exp(Q_GM/self.curr_T)
         
         dom  = np.sum(exp_term)
@@ -59,6 +61,8 @@ class SARSALearning:
             P_sa = exp_term / dom
         actions = np.array(range(self.action_n))[action_mask]
         # we return the index after sampling according to probailities 
+        if len(actions) == 0:
+            return None
         return np.random.choice(actions,p=P_sa)
     
     def calc_Q_GM(self,state_s):
@@ -161,8 +165,8 @@ class SARSALearning:
                     action_aprime = self.select_action(state_sprime,index_episode,action_mask)
 
                     # Update only if the mask is all valid
-                    if np.all(action_mask) and self.training_mode:
-                        rewards_acc += self.update_Qmatrix(self,state_s,state_sprime,action_a,action_aprime,rewards,termination)
+                    if  self.training_mode:# and np.all(action_mask)
+                        rewards_acc += self.update_Qmatrix(state_s,state_sprime,action_a,action_aprime,rewards,termination)
                     states_visited.add(tuple(states[i]["TGT"][0]))
                     # update current actions, states, and termination state
                     actions[i] = action_aprime
@@ -171,10 +175,12 @@ class SARSALearning:
                     if not self.training_mode:
                         self.env.render()
                         sleep(0.1)
+                    # self.env.render()
+                    # sleep(0.1)
             rewards_array.append(rewards_acc)
-            print("rewards",rewards_acc)
-            print("time",self.env.timestep)
-            print("states_visited",len(states_visited))
+            # print("rewards",rewards_acc)
+            # print("time",self.env.timestep)
+            # print("states_visited",len(states_visited))
             
             
             # Calculate the average reward for the last 200 episodes

@@ -30,11 +30,11 @@ for mod in modules_configs:
 
 env_params = parameters_manager.get_env_params()
 env = UAVEnvironment(agents_num=env_params['agents_num'],obstacles_num=env_params['obstacles_num'],
-                     waypoints_num=env_params['waypoints_num'],size=Point(10,10),modules=modules,
-                     update_waypoint=env_params['update_waypoint'],max_dist=10)
+                     waypoints_num=env_params['waypoints_num'],size=Point(30,30),modules=modules,
+                     update_waypoint=env_params['update_waypoint'],max_dist=30)
 env.reset()
 training_params = parameters_manager.get_training_params()
-learning_module = SARSALearning(env,modules,training_params['alpha'],training_params['T'],training_params['number_episodes'],Qmatrix_path_dict = {"TGT":"Qmatrix_14999.npy"},training_mode=False)
+learning_module = SARSALearning(env,modules,training_params['alpha'],training_params['T'],training_params['number_episodes'],training_mode=False,Qmatrix_path_dict={"TGT":'Qmatrix_19999_reward_only_thresh_3.npy'},)
 learning_module.simulate_episodes()
 
 # for i in range(30):
