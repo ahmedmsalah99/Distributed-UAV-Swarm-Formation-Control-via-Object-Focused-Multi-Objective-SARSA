@@ -1,6 +1,7 @@
 
 mode:
-  - train
+  # - train
+  - test
 training_params:
   T: 3
   alpha: 0.01

@@ -8,8 +8,7 @@ training_params:
   save_folder: "phase1"
   train_plot_title: "Phase 1"
   window_size: 200
-  termination_reward: 0
-  timeout: 200
+  
 
 env:
   agents_num: 1
@@ -23,6 +22,7 @@ env:
   waypoint_in_radius: 20
   spawn_center_x: 20
   spawn_center_y: 20
+  timeout: 200
 
 
 active_modules:

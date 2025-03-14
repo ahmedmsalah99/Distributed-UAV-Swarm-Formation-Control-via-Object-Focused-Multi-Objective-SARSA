@@ -11,18 +11,19 @@ class SARSALearning:
     # T - The higher the more random actions will happen
     # numberEpisodes - total number of simulation episodes
      
-    def __init__(self,env,modules,alpha,T,number_episodes,Qmatrix_path_dict=None,training_mode=True,train_plot_title="Phase 1",save_folder = ".",window_size=20):
+    def __init__(self,env,modules,training_params,training_mode=True,Qmatrix_path_dict=None):
+                #  ,alpha,T,number_episodes,Qmatrix_path_dict=None,training_mode=True,train_plot_title="Phase 1",save_folder = ".",window_size=20):
         # Initializations
         self.env=env
-        self.number_episodes=number_episodes
-        self.alpha=alpha
-        self.T = T 
-        self.curr_T = T
+        self.number_episodes= training_params.get("number_episodes",1000)
+        self.alpha=training_params.get("alpha",0.1)
+        self.T = training_params.get("T",1) 
+        self.curr_T = self.T
         self.modules = modules
-        self.train_plot_title = train_plot_title
+        self.train_plot_title = training_params.get("train_plot_title","")
         self.training_mode = training_mode
-        self.save_folder = save_folder
-        self.window_size = window_size
+        self.save_folder = training_params.get("save_folder",".")
+        self.window_size = training_params.get("window_size",20)
         # Initialize 
         self.state_space=env.observation_space()
         self.action_n=env.action_space().n
@@ -30,11 +31,11 @@ class SARSALearning:
         
         self.Qmatrix = {}
         for mod in self.state_space:
-            if Qmatrix_path_dict is not None and mod in Qmatrix_path_dict:
+            # Qmatrix_path_dict = modules[mod]
+            if mod in Qmatrix_path_dict:
                 loaded_Qmatrix = np.load(Qmatrix_path_dict[mod],allow_pickle=True).item()
                 print(loaded_Qmatrix)
                 self.Qmatrix[mod] = loaded_Qmatrix[mod]
-                
             else:
                 current_state_space = self.state_space[mod]
                 if isinstance(current_state_space,MultiDiscrete):
@@ -169,8 +170,7 @@ class SARSALearning:
                     if actions[i] is None:
                         continue
                     observations, rewards, termination, truncation, info = self.env.step(actions[i],i)
-                    if rewards["TGT"][0] < -100:
-                        print("here")
+
                     action_mask = info['action_mask']
                     # time up
                     if  truncation:

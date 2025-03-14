@@ -76,11 +76,13 @@ class CollisionModule(ObservationModule):
                 continue
             rel_pos = pos - agent_pos
             distance = np.min((np.linalg.norm(rel_pos.to_array()),env.max_dist-1))*10
-            bearing = (np.min((np.arctan2(rel_pos.y, rel_pos.x) * 180 / np.pi,180-1))+180)/5
+            bearing = (np.min((np.arctan2(rel_pos.y, rel_pos.x) * 180 / np.pi,180-1))+180)
+            angle = (agent_heading + 180)
+            diff = (angle - bearing + 360)/10
             heading_diff = (int(agent_heading - env.agents_angles[i]) + 360-1) // 10
 
             quantized_distance = self.get_refined_dist(distance,env.max_dist)
-            obs[obstacle_idx] = [int(quantized_distance), int(bearing), heading_diff]
+            obs[obstacle_idx] = [int(quantized_distance), int(diff), heading_diff]
             obstacle_idx += 1
         return obs
     
@@ -135,8 +137,10 @@ class ObstacleAvoidanceModule(ObservationModule):
         for i, pos in enumerate(env.obstacles_positions):
             rel_pos = pos - agent_pos
             distance = np.min((np.linalg.norm(rel_pos.to_array()),env.max_dist-1))*10
-            bearing = (np.min((np.arctan2(rel_pos.y, rel_pos.x) * 180 / np.pi,180-1))+180)/5
-            obs[i] = [int(distance), int(bearing)]
+            bearing = (np.min((np.arctan2(rel_pos.y, rel_pos.x) * 180 / np.pi,180-1))+180)
+            angle = (env.agents_angles[agent_idx] + 180)
+            diff = (angle - bearing + 360)/10
+            obs[i] = [int(distance), int(diff)]
         return obs
     
     def calc_reward(self, env, agent_idx):

@@ -17,27 +17,24 @@ class UAVEnvironment(ParallelEnv):
         "name": "uav_environment_v0",
     }
 
-    def __init__(self,agents_num,modules,update_waypoint=True,render_mode = "gui",max_dist = 100,obstacles_num = 30
-                 ,waypoints_num = 6,size=Point(100,100),waypoint_dist_thesh=1.5,is_urban=False,spawn_center = Point(50,50)
-                 ,termination_reward = 0,timeout = 10000,waypoint_in_radius=None):
+    def __init__(self,agents_num,modules,env_params,render_mode = "gui"):
         """The init method takes in environment arguments.
         """
         # Meta informations about the environment
-        self.timeout = timeout
-        self.termination_reward = termination_reward
-        self.waypoint_in_radius = waypoint_in_radius
-        self.update_waypoint= update_waypoint
-        self.max_dist = max_dist
+        self.timeout = env_params.get("timeout",10000)
+        self.waypoint_in_radius = env_params.get("waypoint_in_radius",None)
+        self.update_waypoint= env_params.get("update_waypoint",True)
+        self.max_dist = env_params.get("max_dist",1.0)
         self.modules = modules
-        self.is_urban = is_urban
+        self.is_urban = False
         self.render_mode = render_mode
         self.screen = None 
         self.agents_num = agents_num
         self.row_size = 5
-        self.size = size
-        self.waypoints_num = waypoints_num
-        self.obstacles_num = obstacles_num
-        self.waypoint_dist_thesh = waypoint_dist_thesh
+        self.size = Point(env_params.get("x_size",100),env_params.get("y_size",100))
+        self.waypoints_num = env_params.get("waypoints_num",1)
+        self.obstacles_num = env_params.get("obstacles_num",0)
+        self.waypoint_dist_thesh = env_params.get("waypoint_dist_thesh",1.5)
         self.cell_size = 10
         self.actions = [-60,-45,-30,-15,-8,0,8,15,30,45,60]
         self.swarm_radius = np.sqrt(agents_num) * 0.25
@@ -45,7 +42,7 @@ class UAVEnvironment(ParallelEnv):
         self.agent_speed = 0.2
         self.collision_dist = self.agent_speed/2
         half_point = Point(self.size.x//2,self.size.y)
-        self.spawn_center = half_point - spawn_center 
+        self.spawn_center = half_point - Point(env_params.get("spawn_center_x",1.0),env_params.get("spawn_center_y",1.0)) 
         self.border_x_down = self.spawn_center.x + self.swarm_radius
         residual = np.max((self.border_x_down - (self.size.x-1),0))
         self.border_x_down = np.max((self.border_x_down - residual,0))
@@ -65,7 +62,7 @@ class UAVEnvironment(ParallelEnv):
         self.possible_agents = np.array(list(range(agents_num)))
         self.agents_positions = np.array([Point(0,0) for _ in self.possible_agents])
         self.agents_angles = np.array([0 for _ in self.possible_agents])
-        self.grid = np.zeros((size.x,size.y))
+        self.grid = np.zeros((self.size.x,self.size.y))
         
         # obstacles initialization
         self.waypoints_positions = np.array([])
@@ -274,7 +271,6 @@ class UAVEnvironment(ParallelEnv):
         # Execute actions
         # update angle
         termination = False
-        termination_reward = 0
         # update position
         new_pos,new_angle = self.update_state(agent_idx,action)
         pos_valid, hits = self.validate_pos(agent_idx,new_pos)
@@ -289,7 +285,6 @@ class UAVEnvironment(ParallelEnv):
             masks = self.get_actions_masks(agent_idx)
         if np.all(masks==False):
             termination = True
-            termination_reward = self.termination_reward
             # x = 0
             # y = 0
             # if self.agents_positions[agent_idx].x >= self.size.x - self.collision_dist:
@@ -306,9 +301,7 @@ class UAVEnvironment(ParallelEnv):
 
 
         rewards = self.calc_reward(agent_idx)
-        for mod in rewards:
-            rewards[mod][0] += termination_reward
-            break
+
         # Update way point and check termination conditions
         if self.waypoints_num > 0:
             way_point_dist = self.agents_positions[agent_idx].dist(self.waypoints_positions[self.current_waypoint_idx])
