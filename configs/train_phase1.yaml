@@ -1,20 +1,35 @@
-
 mode:
   - train
+  # - test
 training_params:
-  T: 0.1
+  T: 1.0
   alpha: 0.1
-  number_episodes: 10000
+  number_episodes: 20000
+  save_folder: "phase1"
+  train_plot_title: "Phase 1"
+  window_size: 200
+  termination_reward: 0
+  timeout: 200
 
 env:
   agents_num: 1
   waypoints_num: 1
   obstacles_num: 0
-  update_waypoint: False
+  update_waypoint: True
+  x_size: 75
+  y_size: 75
+  max_dist: 5
+  waypoint_dist_thesh : 1.5
+  waypoint_in_radius: 20
+  spawn_center_x: 20
+  spawn_center_y: 20
+
 
 active_modules:
   TGT:
     discount: 0.9
-    thresh: 3
+    thresh: 1.5
     w: 1
+    # Qmatrix_path: "./phase1/Qmatrix_19999.npy"
+
 

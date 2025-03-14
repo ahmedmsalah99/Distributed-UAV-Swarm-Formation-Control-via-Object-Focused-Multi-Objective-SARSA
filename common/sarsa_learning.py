@@ -1,7 +1,8 @@
 from time import sleep
 import numpy as np
 import matplotlib.pyplot as plt
-
+from gymnasium.spaces import MultiDiscrete
+import os
 class SARSALearning:
     # INPUTS: 
     # env - Environment object
@@ -10,7 +11,7 @@ class SARSALearning:
     # T - The higher the more random actions will happen
     # numberEpisodes - total number of simulation episodes
      
-    def __init__(self,env,modules,alpha,T,number_episodes,Qmatrix_path_dict=None,training_mode=True,train_plot_title="Phase 1"):
+    def __init__(self,env,modules,alpha,T,number_episodes,Qmatrix_path_dict=None,training_mode=True,train_plot_title="Phase 1",save_folder = ".",window_size=20):
         # Initializations
         self.env=env
         self.number_episodes=number_episodes
@@ -20,6 +21,8 @@ class SARSALearning:
         self.modules = modules
         self.train_plot_title = train_plot_title
         self.training_mode = training_mode
+        self.save_folder = save_folder
+        self.window_size = window_size
         # Initialize 
         self.state_space=env.observation_space()
         self.action_n=env.action_space().n
@@ -34,7 +37,10 @@ class SARSALearning:
                 
             else:
                 current_state_space = self.state_space[mod]
-                whole_shape = list(current_state_space.nvec) + [self.action_n]
+                if isinstance(current_state_space,MultiDiscrete):
+                    whole_shape = list(current_state_space.nvec) + [self.action_n]
+                else:
+                    whole_shape = [current_state_space.n] + [self.action_n]
                 self.Qmatrix[mod] = np.zeros(whole_shape)
         
          
@@ -42,7 +48,7 @@ class SARSALearning:
     # INPUTS: 
     # state - state for which to compute the action
     # index - index of the current episode
-    def select_action(self,state,index,action_mask):
+    def select_action(self,state,action_mask):
         
         Q_GM = self.calc_Q_GM(state)
         Q_GM = Q_GM[action_mask]
@@ -62,6 +68,7 @@ class SARSALearning:
         actions = np.array(range(self.action_n))[action_mask]
         # we return the index after sampling according to probailities 
         if len(actions) == 0:
+            # raise Exception("No valid actions can be taken")
             return None
         return np.random.choice(actions,p=P_sa)
     
@@ -72,7 +79,9 @@ class SARSALearning:
             Q_m = np.zeros(self.action_n)
             for obj in state_s[mod]:
                 curr_state_s = state_s[mod][obj]
-                Q_m += self.Qmatrix[mod][tuple(curr_state_s)]
+                if  isinstance(curr_state_s,list):
+                    curr_state_s = tuple(curr_state_s)
+                Q_m += self.Qmatrix[mod][curr_state_s]
                 if np.isnan(Q_m).any():
                     print("fault detected")
 
@@ -89,16 +98,22 @@ class SARSALearning:
                 curr_state_s = state_s[mod][obj]
                 reward = rewards[mod][obj]
                 rewards_acc += reward
+                
                 if rewards_acc > 50:
                     print(rewards_acc)
+                if isinstance(curr_state_sprime,list):
+                        curr_state_sprime = tuple(curr_state_sprime)
+                if isinstance(curr_state_s,list):
+                    curr_state_s = tuple(curr_state_s)
                 if not termination:
                     # SARSA formula
-                    error= reward+gamma*self.Qmatrix[mod][tuple(curr_state_sprime)][action_aprime]-gamma*self.Qmatrix[mod][tuple(curr_state_s)][action_a]
-                    self.Qmatrix[mod][tuple(curr_state_s)][action_a]=self.Qmatrix[mod][tuple(curr_state_s)][action_a]+self.alpha*error
+                    
+                    error= reward+gamma*self.Qmatrix[mod][curr_state_sprime][action_aprime]-gamma*self.Qmatrix[mod][curr_state_s][action_a]
+                    self.Qmatrix[mod][curr_state_s][action_a]=self.Qmatrix[mod][curr_state_s][action_a]+self.alpha*error
                 else:
                     # in the terminal state, we have Qmatrix[stateSprime,actionAprime]=0 
-                    error = reward - self.Qmatrix[mod][tuple(curr_state_s)][action_a]
-                    self.Qmatrix[mod][tuple(curr_state_s)][action_a]=self.Qmatrix[mod][tuple(curr_state_s)][action_a]+self.alpha*error
+                    error = reward - self.Qmatrix[mod][curr_state_s][action_a]
+                    self.Qmatrix[mod][curr_state_s][action_a]=self.Qmatrix[mod][curr_state_s][action_a]+self.alpha*error
         return rewards_acc
     
     def simulate_episodes(self):
@@ -129,7 +144,6 @@ class SARSALearning:
             rewards_acc = 0
             actions = []
             states = []
-            states_visited = set()
             print("Simulating episode {}".format(index_episode))
 
             # initialize states, and actions
@@ -139,18 +153,24 @@ class SARSALearning:
                 states.append(state_s)
                 # select an action on the basis of the initial state
                 action_mask = info[i]['action_mask']
-                action_a = self.select_action(state_s,index_episode,action_mask)
+                action_a = self.select_action(state_s,action_mask)
+                # if action_a is None:
+                #     raise Exception("No actions can be taken at the starting position!")
                 actions.append(action_a)
             
             # here we step from one state to another
             # this will loop until a terminal state is reached
-            while not np.all(terminated):
+            while not np.any(terminated):
                 for i in self.env.agents:
                     # agent already terminated
                     if terminated[i]:
                         continue
                     # move the agent
+                    if actions[i] is None:
+                        continue
                     observations, rewards, termination, truncation, info = self.env.step(actions[i],i)
+                    if rewards["TGT"][0] < -100:
+                        print("here")
                     action_mask = info['action_mask']
                     # time up
                     if  truncation:
@@ -162,31 +182,34 @@ class SARSALearning:
 
                     # next state and action
                     state_sprime = observations
-                    action_aprime = self.select_action(state_sprime,index_episode,action_mask)
-
+                    action_aprime = self.select_action(state_sprime,action_mask)
+                    new_action_taken = True
+                    if action_aprime is None:
+                        action_aprime = action_a
+                        new_action_taken = False
+                    # if rewards["OBS"]:
                     # Update only if the mask is all valid
                     if  self.training_mode:# and np.all(action_mask)
                         rewards_acc += self.update_Qmatrix(state_s,state_sprime,action_a,action_aprime,rewards,termination)
-                    states_visited.add(tuple(states[i]["TGT"][0]))
+                    # states_visited.add(tuple(states[i]["TGT"][0]))
                     # update current actions, states, and termination state
                     actions[i] = action_aprime
                     states[i] = state_sprime
                     terminated[i] = termination
                     if not self.training_mode:
                         self.env.render()
-                        sleep(0.1)
+                        sleep(0.01/self.env.agents_num)
                     # self.env.render()
-                    # sleep(0.1)
-            rewards_array.append(rewards_acc)
+                    # sleep(0.1/self.env.agents_num)
+            rewards_array.append(rewards_acc/self.env.agents_num)
             # print("rewards",rewards_acc)
             # print("time",self.env.timestep)
             # print("states_visited",len(states_visited))
             
             
             # Calculate the average reward for the last 200 episodes
-            if (index_episode+1) % 200 == 0 and self.training_mode:
-                window_size = 200
-                rolling_mean = np.convolve(rewards_array, np.ones(window_size)/window_size, mode='valid')
+            if (index_episode+1) % self.window_size == 0 and self.training_mode:
+                rolling_mean = np.convolve(rewards_array, np.ones(self.window_size)/self.window_size, mode='valid')
                 # rolling_std = np.std(rewards_array[:len(rolling_mean)])
                 x_values = np.arange(len(rolling_mean))
                 # Update the plot
@@ -196,9 +219,10 @@ class SARSALearning:
                 ax.autoscale_view(True, True, True)  # Rescale the view
                 plt.draw()
                 plt.pause(0.05)  # Pause to allow the plot to update
-            
-                np.save("Qmatrix_"+str(index_episode)+".npy", self.Qmatrix)
-                fig.savefig("training_phase1_"+str(index_episode)+".png", dpi=300)
+                save_path_graph = os.path.join(self.save_folder,"training_"+str(index_episode)+".png")
+                save_path_matrix = os.path.join(self.save_folder,"Qmatrix_"+str(index_episode)+".npy")
+                np.save(save_path_matrix, self.Qmatrix)
+                fig.savefig(save_path_graph, dpi=300)
         if self.training_mode:
             # Keep the plot open after the loop finishes
             plt.ioff()

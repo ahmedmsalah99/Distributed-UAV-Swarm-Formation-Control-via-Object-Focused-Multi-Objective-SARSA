@@ -15,7 +15,8 @@ class Point:
         if isinstance(other, Point):
             return Point(self.x - other.x, self.y - other.y)
         raise TypeError("Can only subtract Point from Point")
-    
+    def __mul__(self,num):
+        return Point(self.x * num, self.y * num)
     def dist(self,other):
         return math.sqrt((self.x-other.x)**2+(self.y-other.y)**2)
     def angle(self,other):

@@ -1,0 +1,28 @@
+
+mode:
+  - train
+training_params:
+  T: 1.0
+  alpha: 0.1
+  number_episodes: 10000
+  save_folder: "phase1"
+  train_plot_title: "Phase 1"
+  window_size: 20
+  
+env:
+  agents_num: 1
+  waypoints_num: 1
+  obstacles_num: 0
+  update_waypoint: True
+  x_size: 20
+  y_size: 20
+  max_dist: 10
+
+
+active_modules:
+  TGT:
+    discount: 0.9
+    thresh: 1.5
+    w: 1
+
+

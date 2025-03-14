@@ -10,34 +10,47 @@ parameters_manager = ParametersManager('configs/train_phase1.yaml')
 
 ## Modules Initialization
 modules_configs = parameters_manager.get_active_modules()
+training_params = parameters_manager.get_training_params()
+
 modules = {}
+Qmatrix_path_dict = {}
 for mod in modules_configs:
+
+    config = modules_configs[mod]
+    if "Qmatrix_path" in config:
+            Qmatrix_path_dict[mod] = config["Qmatrix_path"]
+
     if mod == "TGT":
-        config = modules_configs[mod]
         modules[mod] = TargetSeekModule(config['w'],config['discount'],config['thresh'])
     elif mod == "COH":
-        config = modules_configs[mod]
         modules[mod] = CohesionModule(config['w'],config['discount'])
     elif mod == "COL":
-        config = modules_configs[mod]
-        modules[mod] = CollisionModule(config['w'],config['discount'])
+        modules[mod] = CollisionModule(config['w'],config['discount'],config['away_thresh'],config['close_thresh'])
     elif mod == "ALN":
-        config = modules_configs[mod]
         modules[mod] = AlignmentModule(config['w'],config['discount'])
     elif mod == "OBS":
-        config = modules_configs[mod]
-        modules[mod] = ObstacleAvoidanceModule(config['w'],config['discount'])
+        modules[mod] = ObstacleAvoidanceModule(config['w'],config['discount'],config['away_thresh'],config['close_thresh'])
 
 env_params = parameters_manager.get_env_params()
 env = UAVEnvironment(agents_num=env_params['agents_num'],obstacles_num=env_params['obstacles_num'],
-                     waypoints_num=env_params['waypoints_num'],size=Point(30,30),modules=modules,
-                     update_waypoint=env_params['update_waypoint'],max_dist=30)
+                     waypoints_num=env_params['waypoints_num'],size=Point(env_params["x_size"],env_params["y_size"]),modules=modules,
+                     update_waypoint=env_params['update_waypoint'],max_dist=env_params["max_dist"],termination_reward =training_params['termination_reward'],
+                     waypoint_dist_thesh=env_params['waypoint_dist_thesh'],timeout = training_params["timeout"],
+                     waypoint_in_radius = env_params["waypoint_in_radius"],spawn_center=Point(env_params['spawn_center_x'],env_params['spawn_center_y']))
 env.reset()
-training_params = parameters_manager.get_training_params()
-learning_module = SARSALearning(env,modules,training_params['alpha'],training_params['T'],training_params['number_episodes'],training_mode=False,Qmatrix_path_dict={"TGT":'Qmatrix_19999_reward_only_thresh_3.npy'},)
+# Qmatrix_path_dict = {"TGT":'./phase1/Qmatrix_9999_good_shaky_3.npy'}
+# Qmatrix_path_dict = { mod:"Qmatrix_1999_good.npy"
+#     for mod in ["COH","COL","ALN","OBS"]
+# }
+# Qmatrix_path_dict = { mod:"phase2/Qmatrix_999.npy"
+#     for mod in ["COH","COL","ALN","OBS"]
+# }
+
+mode = parameters_manager.get_mode()
+training_mode = mode == "train"
+learning_module = SARSALearning(env,modules,training_params['alpha'],training_params['T'],training_params['number_episodes'],
+                                save_folder=training_params["save_folder"],
+                                training_mode= training_mode,train_plot_title=training_params["train_plot_title"]
+                                ,window_size=training_params["window_size"])#,Qmatrix_path_dict=Qmatrix_path_dict)
 learning_module.simulate_episodes()
 
-# for i in range(30):
-#     env.step([env.action_space(0).sample(),env.action_space(1).sample()])
-#     env.render()
-#     sleep(2)
