@@ -32,7 +32,7 @@ class SARSALearning:
         self.Qmatrix = {}
         for mod in self.state_space:
             # Qmatrix_path_dict = modules[mod]
-            if mod in Qmatrix_path_dict:
+            if Qmatrix_path_dict is not None and mod in Qmatrix_path_dict:
                 loaded_Qmatrix = np.load(Qmatrix_path_dict[mod],allow_pickle=True).item()
                 print(loaded_Qmatrix)
                 self.Qmatrix[mod] = loaded_Qmatrix[mod]
@@ -94,14 +94,17 @@ class SARSALearning:
         for mod in self.modules:
             gamma = self.modules[mod].discount
             for obj in state_s[mod]:
+                if rewards[mod][obj] is None:
+                    continue
+
                 # get state_s, state_sprime, reward for the module and object 
                 curr_state_sprime = state_sprime[mod][obj]
                 curr_state_s = state_s[mod][obj]
                 reward = rewards[mod][obj]
                 rewards_acc += reward
                 
-                if rewards_acc > 50:
-                    print(rewards_acc)
+                # if rewards_acc > 50:
+                #     print(rewards_acc)
                 if isinstance(curr_state_sprime,list):
                         curr_state_sprime = tuple(curr_state_sprime)
                 if isinstance(curr_state_s,list):
@@ -161,7 +164,7 @@ class SARSALearning:
             
             # here we step from one state to another
             # this will loop until a terminal state is reached
-            while not np.any(terminated):
+            while not np.all(terminated):
                 for i in self.env.agents:
                     # agent already terminated
                     if terminated[i]:
@@ -170,7 +173,8 @@ class SARSALearning:
                     if actions[i] is None:
                         continue
                     observations, rewards, termination, truncation, info = self.env.step(actions[i],i)
-
+                    # if np.any([rewards['OBS'][key] < -1  for key in rewards['OBS'] if rewards['OBS'][key] is not None ]) or np.any([rewards['COL'][key] < -1 for key in rewards['COL'] if rewards['COL'][key] is not None]):
+                    #     print("collision")
                     action_mask = info['action_mask']
                     # time up
                     if  truncation:
@@ -218,7 +222,7 @@ class SARSALearning:
                 ax.relim()  # Recalculate limits
                 ax.autoscale_view(True, True, True)  # Rescale the view
                 plt.draw()
-                plt.pause(0.05)  # Pause to allow the plot to update
+                plt.pause(0.2)  # Pause to allow the plot to update
                 save_path_graph = os.path.join(self.save_folder,"training_"+str(index_episode)+".png")
                 save_path_matrix = os.path.join(self.save_folder,"Qmatrix_"+str(index_episode)+".npy")
                 np.save(save_path_matrix, self.Qmatrix)

@@ -34,24 +34,25 @@ class UAVEnvironment(ParallelEnv):
         self.size = Point(env_params.get("x_size",100),env_params.get("y_size",100))
         self.waypoints_num = env_params.get("waypoints_num",1)
         self.obstacles_num = env_params.get("obstacles_num",0)
-        self.waypoint_dist_thesh = env_params.get("waypoint_dist_thesh",1.5)
+        self.waypoint_dist_thresh = env_params.get("waypoint_dist_thresh",1.5)
         self.cell_size = 10
         self.actions = [-60,-45,-30,-15,-8,0,8,15,30,45,60]
-        self.swarm_radius = np.sqrt(agents_num) * 0.25
+        self.swarm_radius = np.sqrt(agents_num) * 2
         self.resolution = 1.0
-        self.agent_speed = 0.2
+        self.agent_speed = env_params.get("agent_speed",1)
         self.collision_dist = self.agent_speed/2
-        half_point = Point(self.size.x//2,self.size.y)
-        self.spawn_center = half_point - Point(env_params.get("spawn_center_x",1.0),env_params.get("spawn_center_y",1.0)) 
+        half_point = Point(self.size.x,self.size.y)
+        self.spawn_center = self.size - Point(env_params.get("spawn_center_x",1.0),env_params.get("spawn_center_y",1.0)) 
         self.border_x_down = self.spawn_center.x + self.swarm_radius
         residual = np.max((self.border_x_down - (self.size.x-1),0))
         self.border_x_down = np.max((self.border_x_down - residual,0))
-        self.border_x_up = np.max((self.spawn_center.x - self.swarm_radius - residual,self.size.x-1))
+        self.border_x_up = np.max(np.min((self.spawn_center.x - self.swarm_radius - residual,self.size.x-1)),0)
 
         self.border_y_right = self.spawn_center.y+self.swarm_radius
         residual = np.max((self.border_y_right - (self.size.y-1) ,0))
         self.border_y_right = np.max((self.border_y_right - residual,0))
-        self.border_y_left = np.max((self.spawn_center.y - self.swarm_radius - residual,self.size.y-1))
+        self.border_y_left = np.max(np.min((self.spawn_center.y - self.swarm_radius - residual,self.size.y-1)),0)
+
         # other objects positions
 
 
@@ -72,16 +73,18 @@ class UAVEnvironment(ParallelEnv):
         obstacles = np.array([])
         for _ in range(self.obstacles_num):
             x = random.uniform(0, self.size.x - 1)
-            y = random.uniform(0,self.border_y_left)
+            y = random.uniform(0,self.size.y -1)
             candidate = Point(x,y)
-            while candidate in self.waypoints_positions or candidate in self.agents_positions:
-                y = random.uniform(0,self.border_y_left)
+            in_box = candidate.x > self.border_x_up and candidate.x < self.border_x_down and candidate.y < self.border_y_right and candidate.y > self.border_y_left
+            while candidate in self.waypoints_positions or in_box:
+                y = random.uniform(0,self.size.y-1)
                 candidate = Point(x,y)
+                in_box = candidate.x > self.border_x_up and candidate.x < self.border_x_down and candidate.y < self.border_y_right and candidate.y > self.border_y_left
             obstacles = np.append(obstacles,candidate)
         return obstacles
     
     def generate_waypoints(self):
-        waypoints = np.array([])
+        waypoints = np.array([Point(0,0) for i in range(self.waypoints_num)])
         half_grid = self.size.x // 2
         # step = self.size.y //(self.waypoints_num+1)
         step = (self.border_y_left) // (self.waypoints_num+1)
@@ -95,7 +98,7 @@ class UAVEnvironment(ParallelEnv):
                 x = min(max(x,0),self.size.x-1)
                 y = min(max(y,0),self.size.y-1)
                 candidate = Point(x,y)
-                waypoints = np.append(waypoints,candidate)
+                waypoints[i] = candidate
             return waypoints
 
 
@@ -120,7 +123,8 @@ class UAVEnvironment(ParallelEnv):
                 # y = random.randint(max(step,step*(i+2)), step*(i+1)-1)
                 candidate = Point(x, y)
             
-            waypoints = np.append(waypoints,candidate)
+            waypoints[i] = candidate
+        waypoints = waypoints[::-1]
         return waypoints
     
     def generate_agent_pos(self):
@@ -144,7 +148,7 @@ class UAVEnvironment(ParallelEnv):
         And must set up the environment so that render(), step(), and observe() can be called without issues.
         """
         self.timestep = 0
-        self.current_waypoint_idx = 0
+        self.current_waypoint_indeces = np.array([0 for _ in range(self.agents_num)])
         self.agents = list(copy(self.possible_agents))
 
 
@@ -157,7 +161,7 @@ class UAVEnvironment(ParallelEnv):
                 continue
             dists = [self.agents_positions[i].dist(candidate) for i in range(0,agent)]
             min_dist = np.min(dists)
-            while min_dist < self.resolution * 2:
+            while min_dist < 2:
                 candidate = self.generate_agent_pos()
                 dists = [self.agents_positions[i].dist(candidate) for i in range(0,agent)]
                 min_dist = np.min(dists)
@@ -169,6 +173,7 @@ class UAVEnvironment(ParallelEnv):
         # obstacles and waypoints initialization
         self.waypoints_positions = self.generate_waypoints()
         self.obstacles_positions = self.generate_obstacles()
+        
         # Get observations
         observations = {}
         for agent_idx in self.agents:
@@ -229,11 +234,16 @@ class UAVEnvironment(ParallelEnv):
         truth_array  = [pos.dist(agent_new_pos) <= self.collision_dist for pos in self.agents_positions]
         # exclude object's position itself
         truth_array[agent_idx] = True
+        
         return np.sum(truth_array) == 1
     
     # @profile
     def check_obstacle_collision(self,agent_new_pos):
         truth_array = [False if pos.dist(agent_new_pos) <= self.collision_dist else True for pos in self.obstacles_positions]
+        # if not np.all(truth_array):
+        #     print("collision_detected")
+        #     print(np.min([pos.dist(agent_new_pos) for pos in self.obstacles_positions]))
+
         return np.all(truth_array)
     
     def validate_pos(self,agent_idx,agent_new_pos):
@@ -250,9 +260,18 @@ class UAVEnvironment(ParallelEnv):
         return rewards
     def resolve_boundry_situation(self,agent_idx):
         pos = self.agents_positions[agent_idx]
-        x = max(min(pos.x,self.size.x-self.agent_speed),self.agent_speed)
-        y = max(min(pos.y,self.size.y-self.agent_speed),self.agent_speed)
+        x = max(min(pos.x,self.size.x-self.agent_speed*2),self.agent_speed*2)
+        y = max(min(pos.y,self.size.y-self.agent_speed*2),self.agent_speed*2)
         return Point(x,y)
+
+    def resolve_obstacle_situation(self,agent_idx):
+        pos = self.agents_positions[agent_idx]
+        obs_idx  = np.argmin([pos.dist(pos) for pos in self.agents_positions])
+        obs_pos = self.agents_positions[obs_idx]
+        x = max(min(pos.x,obs_pos.x-1.0),obs_pos.x+1.0)
+        y = max(min(pos.y,obs_pos.y-1.0),obs_pos.y+1.0)
+        return Point(x,y)
+
     def step(self, action,agent_idx):
         """Takes in an action for the current agent (specified by agent_selection).
 
@@ -267,7 +286,10 @@ class UAVEnvironment(ParallelEnv):
         And any internal state used by observe() or render()
         """
         
-                
+        # The agent has reached final goal
+        if self.waypoints_num  > 0 and self.current_waypoint_indeces[agent_idx] > self.waypoints_num - 1:
+            termination = True
+            return None, None, termination, None, None
         # Execute actions
         # update angle
         termination = False
@@ -278,8 +300,13 @@ class UAVEnvironment(ParallelEnv):
         if pos_valid:
             self.agents_positions[agent_idx] = new_pos
             self.agents_angles[agent_idx] = new_angle
-        if np.all(masks==False) and hits["hit_boundry"]:
+        elif np.all(masks==False) and hits["hit_boundry"]:
             new_pos = self.resolve_boundry_situation(agent_idx)
+            self.agents_positions[agent_idx] = new_pos
+            self.agents_angles[agent_idx] = new_angle
+            masks = self.get_actions_masks(agent_idx)
+        elif np.all(masks==False) and hits["hit_obstacle"]:
+            new_pos = self.resolve_obstacle_situation(agent_idx)
             self.agents_positions[agent_idx] = new_pos
             self.agents_angles[agent_idx] = new_angle
             masks = self.get_actions_masks(agent_idx)
@@ -303,15 +330,14 @@ class UAVEnvironment(ParallelEnv):
         rewards = self.calc_reward(agent_idx)
 
         # Update way point and check termination conditions
-        if self.waypoints_num > 0:
-            way_point_dist = self.agents_positions[agent_idx].dist(self.waypoints_positions[self.current_waypoint_idx])
-            in_range = way_point_dist < self.waypoint_dist_thesh
-            
-            if in_range and self.update_waypoint:
-                if self.current_waypoint_idx == self.waypoints_num - 1:
-                    termination |= in_range
-                else:
-                    self.current_waypoint_idx += 1
+        if self.waypoints_num > 0 and self.update_waypoint:
+            way_point_dist = self.agents_positions[agent_idx].dist(self.waypoints_positions[self.current_waypoint_indeces[agent_idx]])
+            in_range = way_point_dist < self.waypoint_dist_thresh
+            if in_range:
+                self.current_waypoint_indeces[agent_idx] += 1
+                if self.current_waypoint_indeces[agent_idx] > self.waypoints_num - 1:
+                    termination = True
+                
 
 
         
@@ -339,16 +365,17 @@ class UAVEnvironment(ParallelEnv):
         for obstacle in self.obstacles_positions:
             obstacle = obstacle * resolution_scale
             self.grid[int(obstacle.y)][int(obstacle.x)] = "X"
-            
-        for i in range(self.current_waypoint_idx,len(self.waypoints_positions)):
+        
+        current_waypoint_idx = np.min(self.current_waypoint_indeces)
+        for i in range(current_waypoint_idx,len(self.waypoints_positions)):
             waypoint = self.waypoints_positions[i]*resolution_scale
             self.grid[int(waypoint.y)][int(waypoint.x)] = "G"
 
         for agent_pos in self.agents_positions:
             y = np.min((agent_pos.y*resolution_scale,y_size-1))
             x = np.min((agent_pos.x*resolution_scale,x_size-1))
-            if self.grid[int(y)][int(x)] == "O" or self.grid[int(y)][int(x)] == "X":
-                print("2 over each other") 
+            # if self.grid[int(y)][int(x)] == "O" or self.grid[int(y)][int(x)] == "X":
+            #     print("2 over each other") 
             self.grid[int(y)][int(x)] = "O"
 
         if self.render_mode == "gui":
@@ -412,11 +439,11 @@ class UAVEnvironment(ParallelEnv):
             # temp_dict["TGT"] = MultiDiscrete([self.max_dist,(360)*(2/5)])
             temp_dict["TGT"] = MultiDiscrete([self.max_dist*10,360*(2/10)])
         if "COH" in self.modules:
-            temp_dict["COH"] = MultiDiscrete([self.swarm_radius*10,360/5])
+            temp_dict["COH"] = MultiDiscrete([self.max_dist*10,360/5])
         if "OBS" in self.modules:
             temp_dict["OBS"] = MultiDiscrete([self.max_dist*10,360/5])
         if "COL" in self.modules:
-            temp_dict["COL"] = MultiDiscrete([self.max_dist*10,360/5,360/5])
+            temp_dict["COL"] = MultiDiscrete([3*10,360/5,360/45])
         if "ALN" in self.modules:
             temp_dict["ALN"] = MultiDiscrete([360/5])
         # gymnasium spaces are defined and documented here: https://gymnasium.farama.org/api/spaces/

@@ -1,6 +1,6 @@
 mode:
-  # - train
-  - test
+  - train
+  # - test
 training_params:
   T: 1.0
   alpha: 0.1
@@ -23,7 +23,6 @@ env:
   spawn_center_x: 50
   spawn_center_y: 50
   timeout: 200
-  agent_speed: 0.2
 
 
 active_modules:
@@ -31,6 +30,6 @@ active_modules:
     discount: 0.9
     thresh: 1.5
     w: 1
-    # Qmatrix_path: "results/phase1/Qmatrix_19999.npSy"
+    # Qmatrix_path: "./phase1/Qmatrix_19999.npy"
 
 

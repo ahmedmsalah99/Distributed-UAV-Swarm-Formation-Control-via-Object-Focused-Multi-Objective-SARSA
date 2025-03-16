@@ -1,12 +1,15 @@
 from uav_env.env.uav_environment import UAVEnvironment
-from time import sleep
-from common.utils import Point
 from common.parameters_manager import ParametersManager
 from modules.modules_manager import TargetSeekModule,CohesionModule,CollisionModule,AlignmentModule,ObstacleAvoidanceModule
 from common.sarsa_learning import SARSALearning
+import argparse
 
 
-parameters_manager = ParametersManager('configs/train_phase1.yaml')
+parser = argparse.ArgumentParser(description="Train with a specific config file")
+parser.add_argument("config_path", type=str, help="Path to the configuration YAML file")
+args = parser.parse_args()
+
+parameters_manager = ParametersManager(args.config_path)
 
 ## Modules Initialization
 modules_configs = parameters_manager.get_active_modules()
@@ -38,6 +41,6 @@ env.reset()
 
 mode = parameters_manager.get_mode()
 training_mode = mode == "train"
-learning_module = SARSALearning(env,modules,training_params,training_mode=mode,Qmatrix_path_dict=Qmatrix_path_dict)
+learning_module = SARSALearning(env,modules,training_params,training_mode=training_mode,Qmatrix_path_dict=Qmatrix_path_dict)
 learning_module.simulate_episodes()
 
