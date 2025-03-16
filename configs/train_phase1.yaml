@@ -31,6 +31,6 @@ active_modules:
     discount: 0.9
     thresh: 1.5
     w: 1
-    # Qmatrix_path: "results/phase1/Qmatrix_19999.npSy"
+    Qmatrix_path: "results/phase1/Qmatrix_19999.npy"
 
 
